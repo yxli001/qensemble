@@ -1,0 +1,20 @@
+name: qensemble 
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - ruff
+  - pre-commit
+  - pydantic
+  - pyyaml
+  - scikit-learn
+  - pyparsing
+  - python-dotenv
+  - pip: 
+    - wandb
+    - tensorflow[and-cuda]==2.15.*
+    - tf-keras
+    - qkeras==0.9.0

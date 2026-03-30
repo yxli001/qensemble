@@ -1,0 +1,23 @@
+program: -m qensemble.main
+name: cifar10_phase1_single
+method: grid
+metric:
+  name: val/sparse_acc
+  goal: maximize
+parameters:
+  run.mode:
+    value: train_single
+  model.variant:
+    values: [small, medium, large]
+  quant.activation_total_bits:
+    values: [2, 4, 6, 8]
+  quant.logits_total_bits:
+    values: [2, 4, 6, 8]
+  run.seed:
+    values: [0, 1, 2]
+command:
+  - ${env}
+  - python
+  - ${program}
+  - --config
+  - configs/cifar10/base.yaml

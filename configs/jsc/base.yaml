@@ -1,0 +1,47 @@
+run:
+  mode: train_single
+  seed: 0
+  out_root: outputs
+  name: auto
+
+data:
+  source: openml
+  dataset_name: hls4ml_lhc_jets_hlf
+  test_split: 0.2
+  batch_size: 1024
+  val_split: 0.1
+
+model:
+  name: mlp
+  width: [64, 64]
+
+quant:
+  enabled: false
+
+train:
+  epochs: 100
+  optimizer: adam
+  lr: 0.001
+  loss: sparse_ce
+  metrics: [sparse_acc]
+
+callbacks:
+  early_stopping:
+    enabled: true
+    patience: 10
+  checkpoint:
+    enabled: true
+    monitor: val/sparse_acc
+  wandb:
+    enabled: false
+    log_freq: epoch
+
+ensemble:
+  size: 3
+
+wandb:
+  enabled: false
+  project: qensemble
+  name: jsc-base
+  group: jsc
+  tags: ["jsc"]
