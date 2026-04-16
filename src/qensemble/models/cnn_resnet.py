@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 import qkeras
 import tensorflow as tf
@@ -52,21 +52,17 @@ def _build_filter_config(cfg_model: ModelConfig) -> tuple[list[int], list[int], 
     return num_filters, kernel_sizes, strides_str
 
 
-def _try_build_quant_layers(cfg_quant: QuantConfig) -> dict[str, Any] | None:
-    if not cfg_quant.enabled:
-        return None
-
-    quant_extra = cfg_quant.model_extra or {}
-    activation_total_bits = int(quant_extra.get("activation_total_bits", 4))
-    logits_total_bits = int(quant_extra.get("logits_total_bits", 4))
-    activation_int_bits = 0 if activation_total_bits <= 2 else 1
-    logits_int_bits = 0 if logits_total_bits <= 2 else 1
+def _build_quant_layers(cfg_quant: QuantConfig) -> dict[str, Any]:
+    activation_total_bits = int(cfg_quant.activation_total_bits)
+    activation_int_bits = cast(int, cfg_quant.activation_int_bits)
+    weight_total_bits = int(cfg_quant.weight_total_bits)
+    weight_int_bits = cast(int, cfg_quant.weight_int_bits)
 
     activation_quantizer = qkeras.quantizers.quantized_relu(
         activation_total_bits, activation_int_bits
     )
-    logits_quantizer = qkeras.quantizers.quantized_bits(
-        logits_total_bits, logits_int_bits
+    weights_quantizer = qkeras.quantizers.quantized_bits(
+        weight_total_bits, weight_int_bits
     )
 
     return {
@@ -75,13 +71,13 @@ def _try_build_quant_layers(cfg_quant: QuantConfig) -> dict[str, Any] | None:
             k,
             strides=s,
             padding="same",
-            kernel_quantizer=logits_quantizer,
-            bias_quantizer=logits_quantizer,
+            kernel_quantizer=weights_quantizer,
+            bias_quantizer=weights_quantizer,
         ),
         "Dense": lambda units: QDense(
             units,
-            kernel_quantizer=logits_quantizer,
-            bias_quantizer=logits_quantizer,
+            kernel_quantizer=weights_quantizer,
+            bias_quantizer=weights_quantizer,
         ),
         "Act": lambda: QActivation(activation_quantizer),
     }
@@ -131,23 +127,7 @@ def build_cnn_resnet(
         [int(strides_str[6]), int(strides_str[7]), int(strides_str[8])],
     ]
 
-    quant_api = _try_build_quant_layers(cfg_quant)
-    if quant_api is None:
-        quant_api = {
-            "Conv": lambda filters, k, s=1: tf.keras.layers.Conv2D(
-                filters,
-                k,
-                strides=s,
-                padding="same",
-                use_bias=True,
-                kernel_initializer="he_normal",
-            ),
-            "Dense": lambda units: tf.keras.layers.Dense(
-                units,
-                kernel_initializer="he_normal",
-            ),
-            "Act": lambda: tf.keras.layers.ReLU(),
-        }
+    quant_api: dict[str, Any] = _build_quant_layers(cfg_quant)
 
     inputs = tf.keras.layers.Input(shape=input_shape)
     x = quant_api["Conv"](num_filters[0], kernel_sizes[0], s=strides[0][0])(inputs)

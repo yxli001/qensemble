@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Any, Literal
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -8,10 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 class RunConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    mode: Literal["train_single", "train_dependent"] = "train_single"
     seed: int = 0
     out_root: str = "outputs"
-    name: str = "auto"
+    name: str
 
 
 class DataConfig(BaseModel):
@@ -37,7 +36,10 @@ class ModelConfig(BaseModel):
 class QuantConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    enabled: bool = False
+    activation_total_bits: int
+    activation_int_bits: int
+    weight_total_bits: int
+    weight_int_bits: int
 
 
 class TrainConfig(BaseModel):
@@ -46,6 +48,9 @@ class TrainConfig(BaseModel):
     epochs: int = 1
     optimizer: str = "adam"
     lr: float = 1e-3
+    beta1: float = 0.9
+    beta2: float = 0.999
+    epsilon: float = 1e-7
     weight_decay: float = 0.0
     loss: str = "sparse_ce"
     metrics: list[str] = Field(default_factory=lambda: ["sparse_acc"])
@@ -83,7 +88,7 @@ class CallbacksConfig(BaseModel):
 class EnsembleConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    size: int = 2
+    size: int = 1
 
 
 class WandbConfig(BaseModel):
@@ -91,7 +96,6 @@ class WandbConfig(BaseModel):
 
     enabled: bool = False
     project: str = "qensemble"
-    name: str | None = None
     entity: str | None = None
     group: str | None = None
     tags: list[str] = Field(default_factory=list)
@@ -103,11 +107,11 @@ class AppConfig(BaseModel):
     run: RunConfig
     data: DataConfig
     model: ModelConfig
-    quant: QuantConfig = Field(default_factory=QuantConfig)
+    quant: QuantConfig
     train: TrainConfig = Field(default_factory=TrainConfig)
     callbacks: CallbacksConfig = Field(default_factory=CallbacksConfig)
     ensemble: EnsembleConfig = Field(default_factory=EnsembleConfig)
-    wandb: WandbConfig = Field(default_factory=WandbConfig)
+    wandb: WandbConfig
 
 
 def load_yaml(path: str) -> dict[str, Any]:

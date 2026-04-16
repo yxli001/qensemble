@@ -1,8 +1,7 @@
 run:
-  mode: train_single
   seed: 0
   out_root: outputs
-  name: auto
+  name: mnist-base
 
 data:
   source: tf_keras
@@ -16,12 +15,17 @@ model:
   num_classes: 10
 
 quant:
-  enabled: false
+  activation_total_bits: 8
+  activation_int_bits: 3
+  weight_total_bits: 8
+  weight_int_bits: 2
 
 train:
   epochs: 20
   optimizer: adam
-  lr: 0.001
+  lr: 0.0003
+  beta1: 0.9
+  beta2: 0.999
   loss: sparse_ce
   metrics: [sparse_acc]
 
@@ -36,12 +40,8 @@ callbacks:
     enabled: true 
     log_freq: epoch
 
-ensemble:
-  size: 3
-
 wandb:
   enabled: true 
   project: qensemble
-  name: mnist-base
   group: mnist
   tags: ["mnist"]

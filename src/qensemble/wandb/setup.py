@@ -6,29 +6,16 @@ from qensemble.utils.env import get_env
 from qensemble.utils.gitinfo import get_git_sha
 
 
-def _resolve_wandb_name(cfg: AppConfig) -> str | None:
-    wcfg = cfg.wandb
-    if wcfg.name:
-        return wcfg.name.replace("${run.mode}", cfg.run.mode).replace(
-            "${run.name}", cfg.run.name
-        )
-    if cfg.run.name != "auto":
-        return cfg.run.name
-    return None
-
-
 def init_wandb(cfg: AppConfig) -> object | None:
     wcfg = cfg.wandb
     if not wcfg.enabled:
         return None
 
     group = wcfg.group
-    if group == "${run.mode}":
-        group = cfg.run.mode
 
     run = wandb.init(
         project=wcfg.project,
-        name=_resolve_wandb_name(cfg),
+        name=cfg.run.name,
         entity=wcfg.entity,
         group=group,
         tags=wcfg.tags,

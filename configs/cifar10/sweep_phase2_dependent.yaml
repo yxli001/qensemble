@@ -5,14 +5,16 @@ metric:
   name: test/sparse_acc
   goal: maximize
 parameters:
-  run.mode:
-    value: train_dependent
   model.variant:
     values: [medium, large]
   quant.activation_total_bits:
     values: [4, 6, 8]
-  quant.logits_total_bits:
+  quant.activation_int_bits:
+    value: 1
+  quant.weight_total_bits:
     values: [4, 6, 8]
+  quant.weight_int_bits:
+    value: 1
   ensemble.size:
     values: [2, 3, 4, 5]
   run.seed:

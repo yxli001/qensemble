@@ -1,4 +1,8 @@
+from typing import Any
+
+import qkeras
 import tensorflow as tf
+from qkeras.qlayers import QActivation, QDense
 
 from qensemble.config import ModelConfig, QuantConfig
 
@@ -35,10 +39,32 @@ def _as_float(value: object, field_name: str) -> float:
         raise TypeError(f"model.{field_name} must be a float") from exc
 
 
+def _build_quant_api(cfg_quant: QuantConfig) -> dict[str, Any]:
+    activation_total_bits = int(cfg_quant.activation_total_bits)
+    activation_int_bits = int(cfg_quant.activation_int_bits)
+    weight_total_bits = int(cfg_quant.weight_total_bits)
+    weight_int_bits = int(cfg_quant.weight_int_bits)
+
+    activation_quantizer = qkeras.quantizers.quantized_relu(
+        activation_total_bits, activation_int_bits
+    )
+    weight_quantizer = qkeras.quantizers.quantized_bits(
+        weight_total_bits, weight_int_bits
+    )
+
+    return {
+        "Dense": lambda units: QDense(
+            units,
+            kernel_quantizer=weight_quantizer,
+            bias_quantizer=weight_quantizer,
+        ),
+        "Act": lambda: QActivation(activation_quantizer),
+    }
+
+
 def build_mlp(
     cfg_model: ModelConfig, cfg_quant: QuantConfig, info: dict[str, object]
 ) -> tf.keras.Model:
-    del cfg_quant
     input_shape_raw = info.get("input_shape")
     if not isinstance(input_shape_raw, list | tuple):
         raise TypeError("Model info must provide iterable 'input_shape'")
@@ -55,13 +81,15 @@ def build_mlp(
         hidden = [_as_int(width_cfg, "width")]
 
     dropout = _as_float(_extra(cfg_model, "dropout", 0.0), "dropout")
+    quant_api: dict[str, Any] = _build_quant_api(cfg_quant)
 
     inputs = tf.keras.layers.Input(shape=input_shape)
     x = tf.keras.layers.Flatten()(inputs)
     for width in hidden:
-        x = tf.keras.layers.Dense(width, activation="relu")(x)
+        x = quant_api["Dense"](width)(x)
+        x = quant_api["Act"]()(x)
         if dropout > 0:
             x = tf.keras.layers.Dropout(dropout)(x)
-    outputs = tf.keras.layers.Dense(num_classes)(x)
+    outputs = quant_api["Dense"](num_classes)(x)
 
     return tf.keras.Model(inputs=inputs, outputs=outputs, name="mlp")

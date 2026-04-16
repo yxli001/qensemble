@@ -1,4 +1,4 @@
-import datetime as dt
+import io
 from pathlib import Path
 from typing import Any
 
@@ -6,22 +6,76 @@ import tensorflow as tf
 
 from qensemble.callbacks.callbacks import build_callbacks
 from qensemble.config import AppConfig, merge_wandb_overrides
-from qensemble.ensemble.qensemble_model import QEnsemble
-from qensemble.factories import build_dataset, build_model
-from qensemble.io.bundles import save_dependent_bundle, save_single_bundle
+from qensemble.datasets.openml import build_openml
+from qensemble.datasets.tf_keras import build_tf_keras
+from qensemble.ensemble.qensemble import QEnsemble
+from qensemble.models.cnn_resnet import build_cnn_resnet
+from qensemble.models.mlp import build_mlp
 from qensemble.optim.optimizers import build_optimizer
 from qensemble.utils.seed import set_seed
 from qensemble.utils.tf_gpu import configure_gpu_memory_growth, log_visible_devices
-from qensemble.wandb.artifacts import log_bundle_as_artifact
+from qensemble.wandb.artifacts import (
+    log_bundle_as_artifact,
+    save_dependent_bundle,
+    save_single_bundle,
+)
 from qensemble.wandb.setup import init_wandb
+
+
+def build_dataset(cfg_data: Any) -> tuple[Any, Any, Any, dict[str, Any]]:
+    source = str(cfg_data.source).lower()
+    if source == "tf_keras":
+        return build_tf_keras(cfg_data)
+    if source == "openml":
+        return build_openml(cfg_data)
+    raise ValueError(f"Unsupported data.source '{cfg_data.source}'")
+
+
+def build_model(cfg_model: Any, cfg_quant: Any, info: dict[str, Any]) -> tf.keras.Model:
+    name = str(cfg_model.name).lower()
+    if name == "mlp":
+        return build_mlp(cfg_model, cfg_quant, info)
+    if name == "cnn_resnet":
+        return build_cnn_resnet(cfg_model, cfg_quant, info)
+    raise ValueError(f"Unsupported model.name '{cfg_model.name}'")
+
+
+def _model_param_metrics(
+    model: tf.keras.Model, weight_total_bits: int
+) -> dict[str, int]:
+    num_params = int(model.count_params())
+    return {
+        "model/num_params": num_params,
+        "model/param_bits_total": num_params * int(weight_total_bits),
+    }
+
+
+def _ensemble_param_metrics(
+    qensemble: tf.keras.Model, weight_total_bits: int
+) -> dict[str, int]:
+    member_num_params = 0
+    members = getattr(qensemble, "members", [])
+    if members:
+        member_num_params = int(members[0].count_params())
+
+    total_num_params = int(qensemble.count_params())
+
+    return {
+        "model/num_params": total_num_params,
+        "model/param_bits_total": total_num_params * int(weight_total_bits),
+        "model/member_num_params": member_num_params,
+        "model/member_param_bits_total": member_num_params * int(weight_total_bits),
+        "model/ensemble_size": int(qensemble.size),
+    }
+
+
+def infer_training_mode(cfg: AppConfig) -> str:
+    return "train_dependent" if int(cfg.ensemble.size) > 1 else "train_single"
 
 
 def _new_run_dir(cfg: AppConfig) -> Path:
     out_root = Path(cfg.run.out_root)
     name = cfg.run.name
-    if name == "auto":
-        stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-        name = f"{cfg.run.mode}-{stamp}"
     run_dir = out_root / name
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
@@ -51,6 +105,32 @@ def _compile_model(model: tf.keras.Model, cfg: AppConfig) -> None:
             raise ValueError(f"Unsupported metric '{metric_name}'")
 
     model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+
+
+def _log_model_summary(
+    model: tf.keras.Model,
+    run_dir: Path,
+) -> None:
+    try:
+        buffer = io.StringIO()
+
+        def _write_line(line: str) -> None:
+            buffer.write(f"{line}\n")
+
+        model.summary(print_fn=_write_line)
+        summary_text = buffer.getvalue().rstrip()
+        print(summary_text)
+
+        summary_name = (
+            "ensemble_architecture.txt"
+            if isinstance(model, QEnsemble)
+            else "model_architecture.txt"
+        )
+        summary_path = run_dir / "bundle" / summary_name
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(f"{summary_text}\n")
+    except Exception as exc:
+        print(f"[warn] Could not log model summary: {exc}")
 
 
 def _fit_and_eval(
@@ -95,14 +175,16 @@ def run_train_single(cfg: AppConfig, wandb_run: Any | None = None) -> dict[str, 
     model = build_model(cfg.model, cfg.quant, info)
 
     _compile_model(model, cfg)
+    _log_model_summary(model, run_dir)
     metrics = _fit_and_eval(model, cfg, train_ds, val_ds, test_ds, run_dir, wandb_run)
+    metrics.update(_model_param_metrics(model, int(cfg.quant.weight_total_bits)))
 
     bundle_dir = run_dir / "bundle"
     save_single_bundle(str(bundle_dir), cfg, model, metrics)
     log_bundle_as_artifact(
         wandb_run,
         bundle_dir=str(bundle_dir),
-        name=f"{run_dir.name}-single",
+        name=run_dir.name,
         artifact_type="model",
         aliases=["latest"],
     )
@@ -129,32 +211,24 @@ def run_train_dependent(
     run_dir = _new_run_dir(cfg)
     train_ds, val_ds, test_ds, info = build_dataset(cfg.data)
 
-    member_kwargs = {
-        "cfg_model": cfg.model,
-        "cfg_quant": cfg.quant,
-        "info": info,
-    }
-
-    def _member_builder(**kwargs: Any) -> tf.keras.Model:
-        return build_model(kwargs["cfg_model"], kwargs["cfg_quant"], kwargs["info"])
-
-    qensemble = QEnsemble(
-        member_builder=_member_builder,
-        size=cfg.ensemble.size,
-        member_kwargs=member_kwargs,
-    )
+    members = [
+        build_model(cfg.model, cfg.quant, info) for _ in range(int(cfg.ensemble.size))
+    ]
+    qensemble = QEnsemble(members=members)
 
     _compile_model(qensemble, cfg)
     metrics = _fit_and_eval(
         qensemble, cfg, train_ds, val_ds, test_ds, run_dir, wandb_run
     )
+    _log_model_summary(qensemble, run_dir)
+    metrics.update(_ensemble_param_metrics(qensemble, int(cfg.quant.weight_total_bits)))
 
     bundle_dir = run_dir / "bundle"
     save_dependent_bundle(str(bundle_dir), cfg, qensemble, metrics)
     log_bundle_as_artifact(
         wandb_run,
         bundle_dir=str(bundle_dir),
-        name=f"{run_dir.name}-dependent",
+        name=run_dir.name,
         artifact_type="dependent_ensemble",
         aliases=["latest"],
     )

@@ -25,10 +25,55 @@ Linting will automatically be run on commit to ensure consistent code style.
 To run an experiment, create a config file in `configs/` and then run:
 
 ```sh
-python -m qensemble.run --config <path_to_config> 
+python -m qensemble.main --config <path_to_config> 
 ```
 
 Reference configs are provided in `configs/` for MNIST, CIFAR-10, and JSC datasets. You can modify these or create your own configs to run different experiments.
 
 ## Running Sweeps
-TODO
+Use the repo scripts instead of raw `wandb` commands.
+
+1. Create a sweep (this script prints the sweep ID in W&B output).
+
+```sh
+bash scripts/sweep_create.sh
+```
+
+2. Run one agent for that sweep ID.
+
+```sh
+bash scripts/sweep_run.sh qensemble/qensemble/<sweep_id>
+```
+
+3. Run multiple agents in parallel for the same sweep.
+
+```sh
+bash scripts/sweep_run.sh 3 qensemble/qensemble/<sweep_id>
+```
+
+### Choose which GPU to use
+Set `CUDA_VISIBLE_DEVICES` before launching `sweep_run.sh`.
+
+Run on GPU 0:
+
+```sh
+CUDA_VISIBLE_DEVICES=0 bash scripts/sweep_run.sh qensemble/qensemble/<sweep_id>
+```
+
+Run on GPU 2:
+
+```sh
+CUDA_VISIBLE_DEVICES=2 bash scripts/sweep_run.sh qensemble/qensemble/<sweep_id>
+```
+
+Run on multiple GPUs in one process:
+
+```sh
+CUDA_VISIBLE_DEVICES=0,1 bash scripts/sweep_run.sh qensemble/qensemble/<sweep_id>
+```
+
+Run multiple agents from one command on a selected GPU set:
+
+```sh
+CUDA_VISIBLE_DEVICES=2 bash scripts/sweep_run.sh 3 qensemble/qensemble/<sweep_id>
+```

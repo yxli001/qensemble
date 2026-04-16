@@ -1,3 +1,3 @@
-from qensemble.ensemble.qensemble_model import QEnsemble
+from qensemble.ensemble.qensemble import QEnsemble
 
 __all__ = ["QEnsemble"]

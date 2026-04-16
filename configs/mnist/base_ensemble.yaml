@@ -1,48 +1,50 @@
 run:
   seed: 0
   out_root: outputs
-  name: jsc-base
+  name: mnist-base-ensemble 
 
 data:
-  source: openml
-  dataset_name: hls4ml_lhc_jets_hlf
-  test_split: 0.2
-  batch_size: 1024
+  source: tf_keras
+  dataset_name: mnist
+  batch_size: 128
   val_split: 0.1
 
 model:
   name: mlp
-  width: [64, 64]
+  width: [32, 32]
+  num_classes: 10
 
 quant:
   activation_total_bits: 4
-  activation_int_bits: 1
+  activation_int_bits: 2
   weight_total_bits: 4
   weight_int_bits: 1
 
 train:
-  epochs: 100
+  epochs: 20
   optimizer: adam
-  lr: 0.001
+  lr: 0.0003
+  beta1: 0.9
+  beta2: 0.999
   loss: sparse_ce
   metrics: [sparse_acc]
 
 callbacks:
   early_stopping:
     enabled: true
-    patience: 10
+    patience: 5
   checkpoint:
     enabled: true
     monitor: val/sparse_acc
   wandb:
-    enabled: false
+    enabled: true 
     log_freq: epoch
 
 ensemble:
-  size: 3
+  size: 4
 
 wandb:
-  enabled: false
+  enabled: true 
   project: qensemble
-  group: jsc
-  tags: ["jsc"]
+  group: mnist
+  tags: ["mnist"]

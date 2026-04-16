@@ -1,8 +1,7 @@
 run:
-  mode: train_single
   seed: 0
   out_root: outputs
-  name: auto
+  name: cifar10-base
 
 data:
   source: tf_keras
@@ -21,9 +20,10 @@ model:
   # strides: "111212212"                   # per-layer strides as string (3 per block)
 
 quant:
-  enabled: true
   activation_total_bits: 4
-  logits_total_bits: 4
+  activation_int_bits: 1
+  weight_total_bits: 4
+  weight_int_bits: 1
   scheme: symmetric
 
 train:
@@ -51,7 +51,6 @@ ensemble:
 wandb:
   enabled: true
   project: qensemble
-  name: cifar10-base
   entity: your_entity
-  group: ${run.mode}
+  group: cifar10
   tags: ["cifar10", "qkeras"]
