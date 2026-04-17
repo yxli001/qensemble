@@ -1,7 +1,7 @@
 run:
   seed: 0
   out_root: outputs
-  name: mnist-base-ensemble 
+  name: mnist-base-ensemble4
 
 data:
   source: tf_keras
@@ -11,13 +11,13 @@ data:
 
 model:
   name: mlp
-  width: [32, 32]
+  width: [32, 16]
   num_classes: 10
 
 quant:
-  activation_total_bits: 4
-  activation_int_bits: 2
-  weight_total_bits: 4
+  activation_total_bits: 2
+  activation_int_bits: 1
+  weight_total_bits: 2
   weight_int_bits: 1
 
 train:

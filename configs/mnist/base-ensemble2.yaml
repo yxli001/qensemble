@@ -1,7 +1,7 @@
 run:
   seed: 0
   out_root: outputs
-  name: mnist-base
+  name: mnist-base-ensemble2
 
 data:
   source: tf_keras
@@ -15,15 +15,15 @@ model:
   num_classes: 10
 
 quant:
-  activation_total_bits: 8
-  activation_int_bits: 3
-  weight_total_bits: 8
-  weight_int_bits: 2
+  activation_total_bits: 4
+  activation_int_bits: 2
+  weight_total_bits: 4
+  weight_int_bits: 1
 
 train:
   epochs: 20
   optimizer: adam
-  lr: 0.0005
+  lr: 0.0003
   beta1: 0.9
   beta2: 0.999
   loss: sparse_ce
@@ -39,6 +39,9 @@ callbacks:
   wandb:
     enabled: true 
     log_freq: epoch
+
+ensemble:
+  size: 2
 
 wandb:
   enabled: true 

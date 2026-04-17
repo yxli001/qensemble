@@ -36,7 +36,13 @@ Use the repo scripts instead of raw `wandb` commands.
 1. Create a sweep (this script prints the sweep ID in W&B output).
 
 ```sh
-bash scripts/sweep_create.sh
+bash scripts/sweep_create.sh <path_to_sweep_config>
+```
+
+Example:
+
+```sh
+bash scripts/sweep_create.sh configs/mnist/sweep-architecture.yaml
 ```
 
 2. Run one agent for that sweep ID.
@@ -44,6 +50,8 @@ bash scripts/sweep_create.sh
 ```sh
 bash scripts/sweep_run.sh qensemble/qensemble/<sweep_id>
 ```
+
+By default, each agent keeps requesting new runs until the sweep is exhausted, so you do not need one agent per run. To cap how many runs one agent should execute, pass `--count` explicitly.
 
 3. Run multiple agents in parallel for the same sweep.
 

@@ -1,7 +1,9 @@
 import io
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import tensorflow as tf
 
 from qensemble.callbacks.callbacks import build_callbacks
@@ -12,6 +14,7 @@ from qensemble.ensemble.qensemble import QEnsemble
 from qensemble.models.cnn_resnet import build_cnn_resnet
 from qensemble.models.mlp import build_mlp
 from qensemble.optim.optimizers import build_optimizer
+from qensemble.utils.graphs import save_pairwise_disagreement_heatmap
 from qensemble.utils.seed import set_seed
 from qensemble.utils.tf_gpu import configure_gpu_memory_growth, log_visible_devices
 from qensemble.wandb.artifacts import (
@@ -47,6 +50,7 @@ def _model_param_metrics(
     return {
         "model/num_params": num_params,
         "model/param_bits_total": num_params * int(weight_total_bits),
+        "model/ensemble_size": 1,
     }
 
 
@@ -77,8 +81,16 @@ def _new_run_dir(cfg: AppConfig) -> Path:
     out_root = Path(cfg.run.out_root)
     name = cfg.run.name
     run_dir = out_root / name
+    if run_dir.exists():
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        run_dir = out_root / f"{name}-{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
+
+
+def _artifact_name_with_timestamp(run_name: str) -> str:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"{run_name}-{timestamp}"
 
 
 def _compile_model(model: tf.keras.Model, cfg: AppConfig) -> None:
@@ -160,6 +172,41 @@ def _fit_and_eval(
     return {f"test/{k}": float(v) for k, v in zip(metric_names, values, strict=False)}
 
 
+def _collect_member_predicted_classes_and_labels(
+    members: list[tf.keras.Model], dataset: tf.data.Dataset
+) -> tuple[np.ndarray, np.ndarray]:
+    pred_chunks: list[list[np.ndarray]] = [[] for _ in members]
+    label_chunks: list[np.ndarray] = []
+
+    for batch in dataset:
+        if not isinstance(batch, tuple | list) or len(batch) < 2:
+            msg = "Dataset batches must contain both inputs and labels"
+            raise ValueError(msg)
+
+        x_batch = batch[0]
+        y_batch = batch[1]
+
+        y_np = np.asarray(y_batch.numpy())
+        if y_np.ndim > 1:
+            y_np = np.argmax(y_np, axis=-1)
+        label_chunks.append(y_np.reshape(-1).astype(np.int32, copy=False))
+
+        for idx, member in enumerate(members):
+            logits = member(x_batch, training=False)
+            pred = tf.argmax(logits, axis=-1, output_type=tf.int32)
+            pred_chunks[idx].append(np.asarray(pred.numpy()).reshape(-1))
+
+    if not pred_chunks or not pred_chunks[0] or not label_chunks:
+        raise ValueError("No predictions or labels available from dataset")
+
+    member_pred_classes = np.stack(
+        [np.concatenate(chunks) for chunks in pred_chunks], axis=0
+    )
+    true_labels = np.concatenate(label_chunks)
+
+    return member_pred_classes, true_labels
+
+
 def run_train_single(cfg: AppConfig, wandb_run: Any | None = None) -> dict[str, float]:
     cfg = cfg.model_copy(deep=True)
     set_seed(cfg.run.seed)
@@ -184,7 +231,7 @@ def run_train_single(cfg: AppConfig, wandb_run: Any | None = None) -> dict[str, 
     log_bundle_as_artifact(
         wandb_run,
         bundle_dir=str(bundle_dir),
-        name=run_dir.name,
+        name=_artifact_name_with_timestamp(run_dir.name),
         artifact_type="model",
         aliases=["latest"],
     )
@@ -224,11 +271,29 @@ def run_train_dependent(
     metrics.update(_ensemble_param_metrics(qensemble, int(cfg.quant.weight_total_bits)))
 
     bundle_dir = run_dir / "bundle"
+
+    member_pred_classes, true_labels = _collect_member_predicted_classes_and_labels(
+        qensemble.members, test_ds
+    )
+
+    member_test_accuracies: list[float] = []
+    for idx, pred_classes in enumerate(member_pred_classes):
+        member_test_acc = float(np.mean(pred_classes == true_labels))
+        metrics[f"member_{idx}_test_acc"] = member_test_acc
+        member_test_accuracies.append(member_test_acc)
+
+    metrics["test/member_test_acc_mean"] = float(np.mean(member_test_accuracies))
+
+    save_pairwise_disagreement_heatmap(
+        member_pred_classes=member_pred_classes,
+        output_path=bundle_dir / "pairwise_disagreement.png",
+    )
+
     save_dependent_bundle(str(bundle_dir), cfg, qensemble, metrics)
     log_bundle_as_artifact(
         wandb_run,
         bundle_dir=str(bundle_dir),
-        name=run_dir.name,
+        name=_artifact_name_with_timestamp(run_dir.name),
         artifact_type="dependent_ensemble",
         aliases=["latest"],
     )
