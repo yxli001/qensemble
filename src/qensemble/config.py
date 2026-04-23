@@ -11,6 +11,8 @@ class RunConfig(BaseModel):
     seed: int = 0
     out_root: str = "outputs"
     name: str
+    name_prefix: str | None = None
+    name_fields: list[str] = Field(default_factory=list)
 
 
 class DataConfig(BaseModel):
@@ -156,13 +158,75 @@ def apply_dotted_overrides(
     return AppConfig.model_validate(out)
 
 
+def _format_run_name_value(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        raise ValueError("Run name fields cannot resolve to None")
+    if isinstance(value, dict):
+        items = [
+            f"{key}={_format_run_name_value(val)}" for key, val in sorted(value.items())
+        ]
+        return ",".join(items)
+    if isinstance(value, (list | tuple)):
+        parts = [_format_run_name_value(item) for item in value]
+        return parts[0] if len(parts) == 1 else "x".join(parts)
+    text = str(value)
+    return text.replace("/", "-").replace(" ", "-")
+
+
+def resolve_run_name(cfg: AppConfig) -> AppConfig:
+    name_fields = list(cfg.run.name_fields)
+    if not name_fields:
+        return cfg
+
+    base_name = str(cfg.run.name_prefix or cfg.run.name).strip()
+    if not base_name:
+        raise ValueError(
+            "run.name or run.name_prefix must be set before composing a derived run name"
+        )
+
+    cfg_dump = cfg.model_dump()
+    suffix_parts: list[str] = []
+    for field_name in name_fields:
+        current: Any = cfg_dump
+        for part in field_name.split("."):
+            if not isinstance(current, dict) or part not in current:
+                raise ValueError(
+                    f"Cannot compose run name: field '{field_name}' was not found"
+                )
+            current = current[part]
+        if field_name == "quant" and isinstance(current, dict):
+            suffix_parts.append(
+                "quant="
+                f"w{current['weight_total_bits']}a{current['activation_total_bits']}"
+            )
+        else:
+            suffix_parts.append(f"{field_name}={_format_run_name_value(current)}")
+
+    resolved_name = "-".join([base_name, *suffix_parts])
+    return cfg.model_copy(
+        update={"run": cfg.run.model_copy(update={"name": resolved_name})}
+    )
+
+
 def merge_wandb_overrides(
     cfg: AppConfig | dict[str, Any], wandb_run: Any | None
 ) -> AppConfig:
+    cfg_dict = cfg.model_dump() if isinstance(cfg, AppConfig) else cfg
+
     if wandb_run is None:
         if isinstance(cfg, AppConfig):
-            return cfg
-        return AppConfig.model_validate(cfg)
-    # W&B sweep parameters are typically flat keys like "model.variant".
-    overrides = {k: v for k, v in dict(wandb_run.config).items() if "." in k}
-    return apply_dotted_overrides(cfg, overrides)
+            return resolve_run_name(cfg)
+        return resolve_run_name(AppConfig.model_validate(cfg))
+
+    valid_roots = set(cfg_dict.keys())
+    # Keep sweep-provided config keys (including top-level objects like "quant")
+    # and ignore W&B runtime metadata keys like "system.*".
+    overrides = {
+        k: v
+        for k, v in dict(wandb_run.config).items()
+        if k.split(".", 1)[0] in valid_roots
+    }
+
+    return resolve_run_name(apply_dotted_overrides(cfg, overrides))

@@ -1,4 +1,5 @@
 import io
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -90,7 +91,10 @@ def _new_run_dir(cfg: AppConfig) -> Path:
 
 def _artifact_name_with_timestamp(run_name: str) -> str:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return f"{run_name}-{timestamp}"
+    safe_run_name = re.sub(r"[^A-Za-z0-9_.-]+", "-", run_name).strip("-._")
+    if not safe_run_name:
+        safe_run_name = "run"
+    return f"{safe_run_name}-{timestamp}"
 
 
 def _compile_model(model: tf.keras.Model, cfg: AppConfig) -> None:
@@ -231,7 +235,7 @@ def run_train_single(cfg: AppConfig, wandb_run: Any | None = None) -> dict[str, 
     log_bundle_as_artifact(
         wandb_run,
         bundle_dir=str(bundle_dir),
-        name=_artifact_name_with_timestamp(run_dir.name),
+        name=_artifact_name_with_timestamp(cfg.run.name),
         artifact_type="model",
         aliases=["latest"],
     )
@@ -293,7 +297,7 @@ def run_train_dependent(
     log_bundle_as_artifact(
         wandb_run,
         bundle_dir=str(bundle_dir),
-        name=_artifact_name_with_timestamp(run_dir.name),
+        name=_artifact_name_with_timestamp(cfg.run.name),
         artifact_type="dependent_ensemble",
         aliases=["latest"],
     )

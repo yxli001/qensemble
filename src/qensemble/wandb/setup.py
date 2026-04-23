@@ -1,7 +1,7 @@
 import socket
 
 import wandb
-from qensemble.config import AppConfig
+from qensemble.config import AppConfig, merge_wandb_overrides
 from qensemble.utils.env import get_env
 from qensemble.utils.gitinfo import get_git_sha
 
@@ -22,9 +22,6 @@ def init_wandb(cfg: AppConfig) -> object | None:
         tags=wcfg.tags,
         config=cfg.model_dump(),
     )
-    sweep_run_name = run.config.get("run.name")
-    if isinstance(sweep_run_name, str) and sweep_run_name:
-        run.name = sweep_run_name
     run.config.update(
         {
             "system.git_sha": get_git_sha(),
@@ -33,4 +30,8 @@ def init_wandb(cfg: AppConfig) -> object | None:
         },
         allow_val_change=True,
     )
+
+    resolved_cfg = merge_wandb_overrides(cfg, run)
+    run.name = resolved_cfg.run.name
+    run.config.update({"run.name": resolved_cfg.run.name}, allow_val_change=True)
     return run

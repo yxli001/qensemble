@@ -1,0 +1,68 @@
+program: qensemble.main
+name: mnist-single-layer-sweep
+method: grid
+metric:
+  name: test/sparse_acc
+  goal: maximize
+parameters:
+  run.name_prefix:
+    value: mnist-architecture-sweep
+  run.name_fields:
+    value:
+      - model.width
+      - quant
+  train.epochs:
+    value: 50
+  model.width:
+    values: 
+      - [16]
+      - [32]
+      - [64]
+      - [128]
+      - [256]
+  quant:
+    values:
+      - { 
+          weight_total_bits: 8, 
+          weight_int_bits: 2, 
+          activation_total_bits: 8, 
+          activation_int_bits: 3
+        }
+      - {
+          weight_total_bits: 4, 
+          weight_int_bits: 1, 
+          activation_total_bits: 4, 
+          activation_int_bits: 2
+        }
+      - {
+          weight_total_bits: 2, 
+          weight_int_bits: 1, 
+          activation_total_bits: 2, 
+          activation_int_bits: 1
+        }
+      - {
+          weight_total_bits: 2, 
+          weight_int_bits: 1, 
+          activation_total_bits: 2, 
+          activation_int_bits: 0
+        }
+      - {
+          weight_total_bits: 2, 
+          weight_int_bits: 0, 
+          activation_total_bits: 2, 
+          activation_int_bits: 1
+        }
+      - {
+          weight_total_bits: 2, 
+          weight_int_bits: 0, 
+          activation_total_bits: 2, 
+          activation_int_bits: 0
+        }
+
+command:
+  - ${env}
+  - python
+  - -m
+  - ${program}
+  - --config
+  - configs/mnist/base.yaml

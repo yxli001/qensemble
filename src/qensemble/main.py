@@ -9,11 +9,6 @@ from qensemble.config import (
     load_config,
     merge_wandb_overrides,
 )
-from qensemble.runners import (
-    infer_training_mode,
-    run_train_dependent,
-    run_train_single,
-)
 from qensemble.wandb.setup import init_wandb
 
 
@@ -46,6 +41,12 @@ def main() -> None:
 
     wandb_run = init_wandb(cfg)
     cfg = merge_wandb_overrides(cfg, wandb_run)
+
+    from qensemble.runners import (
+        infer_training_mode,
+        run_train_dependent,
+        run_train_single,
+    )
 
     mode = infer_training_mode(cfg)
     if mode == "train_single":

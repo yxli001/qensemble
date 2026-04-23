@@ -5,8 +5,11 @@ metric:
   name: test/sparse_acc
   goal: maximize
 parameters:
-  run.name: 
+  run.name_prefix: 
     value: mnist-architecture-sweep
+  run.name_fields:
+    value: 
+      - model.width
   train.epochs:
     value: 50
   model.width:
