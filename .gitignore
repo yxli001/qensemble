@@ -34,3 +34,5 @@ outputs/
 *.ckpt
 *.onnx
 *.npz
+
+tea_debug.log
