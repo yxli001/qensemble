@@ -17,7 +17,14 @@ def build_openml(
     random_state = cfg_data.random_state
     cache = cfg_data.cache
 
-    data = fetch_openml(dataset_name, as_frame=False, cache=cache)
+    # Force liac-arff parser to avoid optional pandas dependency in sklearn's
+    # default parser path for dense datasets.
+    data = fetch_openml(
+        dataset_name,
+        as_frame=False,
+        cache=cache,
+        parser="liac-arff",
+    )
     x_all = np.asarray(data.data, dtype="float32")
     y_raw = data.target
 
