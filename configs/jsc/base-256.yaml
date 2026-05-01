@@ -1,0 +1,48 @@
+run:
+  seed: 0
+  out_root: outputs
+  name: jsc-base-256
+
+data:
+  source: openml
+  dataset_name: hls4ml_lhc_jets_hlf
+  test_split: 0.2
+  batch_size: 1024
+  val_split: 0.1
+
+model:
+  name: mlp
+  width: [256, 256]
+  num_classes: 5
+
+quant:
+  activation_total_bits: 8
+  activation_int_bits: 3
+  weight_total_bits: 8
+  weight_int_bits: 2
+
+train:
+  epochs: 50
+  optimizer: adam
+  lr: 0.0005
+  beta1: 0.9
+  beta2: 0.999
+  loss: sparse_ce
+  metrics: [sparse_acc]
+
+callbacks:
+  early_stopping:
+    enabled: true
+    patience: 5
+  checkpoint:
+    enabled: true
+    monitor: val/sparse_acc
+  wandb:
+    enabled: true
+    log_freq: epoch
+
+wandb:
+  enabled: true
+  project: qensemble
+  group: jsc
+  tags: ["jsc"]
