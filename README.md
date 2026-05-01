@@ -30,6 +30,8 @@ python -m qensemble.main --config <path_to_config>
 
 Reference configs are provided in `configs/` for MNIST, CIFAR-10, and JSC datasets. You can modify these or create your own configs to run different experiments.
 
+For ensemble runs, `ensemble.independent` defaults to `false`. Set it to `true` when you want each ensemble member to train independently and only average them at evaluation/export time.
+
 ## Running Sweeps
 Use the repo scripts instead of raw `wandb` commands.
 

@@ -45,12 +45,15 @@ def main() -> None:
     from qensemble.runners import (
         infer_training_mode,
         run_train_dependent,
+        run_train_independent,
         run_train_single,
     )
 
     mode = infer_training_mode(cfg)
     if mode == "train_single":
         metrics = run_train_single(cfg, wandb_run=wandb_run)
+    elif mode == "train_independent":
+        metrics = run_train_independent(cfg, wandb_run=wandb_run)
     else:
         metrics = run_train_dependent(cfg, wandb_run=wandb_run)
 

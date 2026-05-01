@@ -75,7 +75,11 @@ def _ensemble_param_metrics(
 
 
 def infer_training_mode(cfg: AppConfig) -> str:
-    return "train_dependent" if int(cfg.ensemble.size) > 1 else "train_single"
+    if int(cfg.ensemble.size) <= 1:
+        return "train_single"
+    if bool(getattr(cfg.ensemble, "independent", False)):
+        return "train_independent"
+    return "train_dependent"
 
 
 def _new_run_dir(cfg: AppConfig) -> Path:
@@ -167,6 +171,19 @@ def _fit_and_eval(
         verbose=1,
     )
 
+    eval_values = model.evaluate(test_ds, return_dict=True, verbose=1)
+    if isinstance(eval_values, dict):
+        return {f"test/{k}": float(v) for k, v in eval_values.items()}
+
+    metric_names = ["loss", *model.metrics_names[1:]]
+    values = eval_values if isinstance(eval_values, list) else [eval_values]
+    return {f"test/{k}": float(v) for k, v in zip(metric_names, values, strict=False)}
+
+
+def _evaluate_model(
+    model: tf.keras.Model,
+    test_ds: tf.data.Dataset,
+) -> dict[str, float]:
     eval_values = model.evaluate(test_ds, return_dict=True, verbose=1)
     if isinstance(eval_values, dict):
         return {f"test/{k}": float(v) for k, v in eval_values.items()}
@@ -299,6 +316,81 @@ def run_train_dependent(
         bundle_dir=str(bundle_dir),
         name=_artifact_name_with_timestamp(cfg.run.name),
         artifact_type="dependent_ensemble",
+        aliases=["latest"],
+    )
+
+    if wandb_run is not None:
+        wandb_run.log(metrics)
+        wandb_run.finish()
+
+    return metrics
+
+
+def run_train_independent(
+    cfg: AppConfig, wandb_run: Any | None = None
+) -> dict[str, float]:
+    cfg = cfg.model_copy(deep=True)
+    set_seed(cfg.run.seed)
+    configure_gpu_memory_growth()
+    log_visible_devices()
+
+    if wandb_run is None:
+        wandb_run = init_wandb(cfg)
+    cfg = merge_wandb_overrides(cfg, wandb_run)
+
+    run_dir = _new_run_dir(cfg)
+    train_ds, val_ds, test_ds, info = build_dataset(cfg.data)
+
+    members = [
+        build_model(cfg.model, cfg.quant, info) for _ in range(int(cfg.ensemble.size))
+    ]
+
+    metrics: dict[str, float] = {}
+    for idx, member in enumerate(members):
+        member_run_dir = run_dir / f"member_{idx}"
+        _compile_model(member, cfg)
+        _fit_and_eval(
+            member,
+            cfg,
+            train_ds,
+            val_ds,
+            test_ds,
+            member_run_dir,
+            wandb_run,
+        )
+
+    qensemble = QEnsemble(members=members)
+    _compile_model(qensemble, cfg)
+    ensemble_metrics = _evaluate_model(qensemble, test_ds)
+    metrics.update(ensemble_metrics)
+    _log_model_summary(qensemble, run_dir)
+    metrics.update(_ensemble_param_metrics(qensemble, int(cfg.quant.weight_total_bits)))
+
+    bundle_dir = run_dir / "bundle"
+
+    member_pred_classes, true_labels = _collect_member_predicted_classes_and_labels(
+        qensemble.members, test_ds
+    )
+
+    member_test_accuracies: list[float] = []
+    for idx, pred_classes in enumerate(member_pred_classes):
+        member_test_acc = float(np.mean(pred_classes == true_labels))
+        metrics[f"member_{idx}_test_acc"] = member_test_acc
+        member_test_accuracies.append(member_test_acc)
+
+    metrics["test/member_test_acc_mean"] = float(np.mean(member_test_accuracies))
+
+    save_pairwise_disagreement_heatmap(
+        member_pred_classes=member_pred_classes,
+        output_path=bundle_dir / "pairwise_disagreement.png",
+    )
+
+    save_dependent_bundle(str(bundle_dir), cfg, qensemble, metrics)
+    log_bundle_as_artifact(
+        wandb_run,
+        bundle_dir=str(bundle_dir),
+        name=_artifact_name_with_timestamp(cfg.run.name),
+        artifact_type="independent_ensemble",
         aliases=["latest"],
     )
 

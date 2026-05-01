@@ -91,6 +91,7 @@ class EnsembleConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     size: int = 1
+    independent: bool = False
 
 
 class WandbConfig(BaseModel):
