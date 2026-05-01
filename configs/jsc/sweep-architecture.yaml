@@ -1,0 +1,31 @@
+program: qensemble.main
+name: jsc-architecture-sweep
+method: grid
+metric:
+  name: test/sparse_acc
+  goal: maximize
+parameters:
+  run.name_prefix: 
+    value: jsc-architecture-sweep
+  run.name_fields:
+    value: 
+      - model.width
+  train.epochs:
+    value: 50
+  model.width:
+    values: 
+      - [128]
+      - [32, 32]
+      - [64, 32]
+      - [64, 64]
+      - [128, 64]
+      - [256, 128]
+      - [32, 32, 16]
+      - [64, 64, 32]
+command:
+  - ${env}
+  - python
+  - -m
+  - ${program}
+  - --config
+  - configs/jsc/base.yaml

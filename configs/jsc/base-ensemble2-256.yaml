@@ -1,7 +1,7 @@
 run:
   seed: 0
   out_root: outputs
-  name: jsc-base
+  name: jsc-base-ensemble2-256
 
 data:
   source: openml
@@ -12,17 +12,17 @@ data:
 
 model:
   name: mlp
-  width: [64, 32]
+  width: [256, 256]
   num_classes: 5
 
 quant:
-  activation_total_bits: 8
-  activation_int_bits: 3
-  weight_total_bits: 8
-  weight_int_bits: 2
+  activation_total_bits: 4
+  activation_int_bits: 2
+  weight_total_bits: 4
+  weight_int_bits: 1
 
 train:
-  epochs: 20
+  epochs: 50
   optimizer: adam
   lr: 0.0005
   beta1: 0.9
@@ -40,6 +40,9 @@ callbacks:
   wandb:
     enabled: true
     log_freq: epoch
+
+ensemble:
+  size: 2
 
 wandb:
   enabled: true

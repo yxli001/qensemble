@@ -1,0 +1,25 @@
+program: qensemble.main
+name: jsc-bayesian-sweep
+method: bayes
+metric:
+  name: test/sparse_acc
+  goal: maximize
+parameters:
+  ensemble.size:
+    values: [1, 2, 3, 4]
+  quant.weight_total_bits:
+    values: [4, 6, 8]
+  quant.activation_total_bits:
+    values: [4, 6, 8]
+  model.width:
+    values:
+      - [128, 128]
+      - [256, 256]
+      - [128, 256]
+command:
+  - ${env}
+  - python
+  - -m
+  - ${program}
+  - --config
+  - configs/jsc/base-256.yaml

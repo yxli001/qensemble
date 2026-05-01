@@ -1,7 +1,7 @@
 run:
   seed: 0
   out_root: outputs
-  name: jsc-base
+  name: jsc-base-256
 
 data:
   source: openml
@@ -12,7 +12,7 @@ data:
 
 model:
   name: mlp
-  width: [64, 32]
+  width: [256, 256]
   num_classes: 5
 
 quant:
@@ -22,7 +22,7 @@ quant:
   weight_int_bits: 2
 
 train:
-  epochs: 20
+  epochs: 50
   optimizer: adam
   lr: 0.0005
   beta1: 0.9
